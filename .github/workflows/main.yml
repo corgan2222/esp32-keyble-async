@@ -1,0 +1,44 @@
+
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Cache pip
+      uses: actions/cache@v2
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    - name: Cache PlatformIO
+      uses: actions/cache@v2
+      with:
+        path: ~/.platformio
+        key: ${{ runner.os }}-${{ hashFiles('**/lockfiles') }}
+    - name: Set up Python
+      uses: actions/setup-python@v2
+    - name: Install PlatformIO
+      run: |
+        python -m pip install --upgrade pip
+        pip install --upgrade platformio
+        pio platform update
+        pio run -t clean
+    - name: Set env
+      run: echo "PLATFORMIO_BUILD_FLAGS=-DVERSION='\"${GITHUB_REF#refs/*/}\"'" >> $GITHUB_ENV
+      if: startsWith(github.ref, 'refs/tags/')
+    - name: Run PlatformIO
+      run: pio run -e esp32 -e esp32-verbose -e adafruit-huzzah32 
+    - name: Rename firmware
+      run: |
+        cp .pio/build/esp32/firmware.bin esp32.bin
+        cp .pio/build/esp32-verbose/firmware.bin esp32-verbose.bin
+    - name: Release
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: "*.bin"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
